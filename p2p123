@@ -1,0 +1,109 @@
+import socket, sys, os
+import threading 
+ 
+class P2PServer:
+    def __init__(self,host,port):
+        self.host, self.port = host, port
+        self.lock = threading.Lock()
+        self.database=dict()
+        self.run_server()
+ 
+    def run_server(self):
+       
+        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        
+        s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+        
+        s.bind((self.host,self.port))
+        
+        s.listen(3)
+        print 'Server pokrenut i ceka konekcije ...'
+ 
+        while 1:
+            try:
+                clientsock,clientaddr = s.accept()
+            except:
+                continue
+            # niti izvrsenja procesuiraju klijente
+            t = threading.Thread(target=self.handle_client,args=[clientsock,clientaddr])
+            t.setDaemon(1)
+            t.start()
+ 
+ 
+    def handle_client(self,clientsock,ip):
+        print 'Thread %s: spajam se sa klijentom %s ' % (threading.currentThread().getName(),clientsock.getpeername())
+        # primi poruku od klijenta
+ 
+        while 1:
+            data = clientsock.recv(4096)
+            if data=='\list':
+                self.cmd_list(clientsock,ip)
+            else:
+                self.database[data]=ip
+ 
+                # ukoliko nema vise primanja
+                if not len(data) : break
+                print 'Klijent %s; datoteka: %s' % (clientsock.getpeername(),data)
+                self.lock.acquire()
+                response = "Spremljeno!"
+                self.lock.release()
+                clientsock.sendall(response)
+ 
+        # zatvori konekciju
+        clientsock.close()
+ 
+    def cmd_list(self,clientsock,ip):
+        data="Dostupne datoteke drugih klijenata:\r\n"
+ 
+        for el,it in self.database.items():
+            if ip!=it:
+                data+=el+"\r\n"
+ 
+        clientsock.sendall(data)
+ 
+class P2PClient:
+    def __init__(self,remote_host,remote_port):
+        self.remote_host, self.remote_port = remote_host, remote_port
+        self.run_client()
+ 
+    def run_client(self):
+        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+ 
+        print 'Spajam se na posluzitelja: ', self.remote_host, '...'
+        try:
+            s.connect((host,port))
+        except (socket.gaierror,socket.error),e:
+            print 'spajanje nije uspjelo ...%s' % e
+            sys.exit(1)
+ 
+        print 'spojeno!'
+ 
+        # prompt sucelje:
+        while 1:
+            # slanje poruke
+            cmd = raw_input('>> ')
+            # naredba izlaza
+            if cmd=='\exit' : break
+            s.sendall(cmd)
+            # primi odgovor od  posluzitelja
+            response = s.recv(1024)
+            if not len(response):
+                print 'izlazim'
+                break
+            print response
+ 
+        print 'Zatvaram soket ...'
+        s.close()
+        print 'gotovo ...'
+ 
+
+host = '127.0.0.1'
+port = 54321
+ 
+
+if sys.argv[1:]==['server']:
+    p2pserver = P2PServer(host,port)
+ 
+
+elif sys.argv[1:]==['client']:
+    p2pclient = P2PClient(host,port)
